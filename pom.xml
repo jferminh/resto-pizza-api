@@ -9,7 +9,7 @@
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
 	<groupId>com.resto</groupId>
-	<artifactId>pizzeria-api</artifactId>
+	<artifactId>resto-pizza-api</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
 	<properties>
 		<java.version>25</java.version>
