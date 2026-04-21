@@ -1,0 +1,6 @@
+target/          # Dossier de build Maven → inutile, le Dockerfile recompile
+.git/            # Historique Git → inutile dans l'image
+.idea/           # Config IntelliJ
+*.md             # Documentation
+.env             # ⚠️ Sécurité : jamais dans l'image Docker
+docker-compose*.yml  # Config orchestration → pas dans l'image
