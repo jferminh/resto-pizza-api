@@ -243,18 +243,29 @@ class OrderItemServiceTest {
     @Test
     @DisplayName("Doit supprimer l'article si l'ID existe")
     void shouldDeleteOrderItemWhenIdExists() throws ApiNotFoundException {
-      when(orderItemRepository.existsById(1)).thenReturn(true);
+      // ✅ On stubbe findById (nouvelle signature du service)
+      OrderItem mockItem = new OrderItem();
+      mockItem.setId(1);
+
+      Order mockOrder = new Order();
+      mockOrder.setItems(new ArrayList<>(List.of(mockItem))); // ArrayList mutable !
+      mockItem.setOrder(mockOrder);
+
+      when(orderItemRepository.findById(1)).thenReturn(Optional.of(mockItem));
 
       assertDoesNotThrow(() -> orderItemService.deleteOrderItem(1));
 
-      verify(orderItemRepository).existsById(1);
-      verify(orderItemRepository).deleteById(1);
+      verify(orderItemRepository).findById(1);
+      // ✅ deleteById n'est plus appelé — c'est orphanRemoval qui supprime
+      verify(orderItemRepository, never()).deleteById(any());
     }
 
     @Test
     @DisplayName("Doit lever ApiNotFoundException si l'article n'existe pas")
     void shouldThrowApiNotFoundExceptionWhenItemNotFound() {
-      when(orderItemRepository.existsById(999)).thenReturn(false);
+      // ✅ findById retourne Optional.empty() par défaut avec Mockito
+      // → pas besoin de when(), on supprime l'ancien stubbings existsById
+      when(orderItemRepository.findById(999)).thenReturn(Optional.empty());
 
       ApiNotFoundException ex = assertThrows(
           ApiNotFoundException.class,
@@ -268,13 +279,21 @@ class OrderItemServiceTest {
     @Test
     @DisplayName("Hard delete — save ne doit jamais être appelé")
     void shouldBeHardDeleteNotSoftDelete() throws ApiNotFoundException {
-      when(orderItemRepository.existsById(2)).thenReturn(true);
+      // ✅ On vérifie que save() n'est jamais appelé (pas de soft delete)
+      OrderItem mockItem = new OrderItem();
+      mockItem.setId(2);
+
+      Order mockOrder = new Order();
+      mockOrder.setItems(new ArrayList<>(List.of(mockItem))); // ArrayList mutable !
+      mockItem.setOrder(mockOrder);
+
+      when(orderItemRepository.findById(2)).thenReturn(Optional.of(mockItem));
 
       orderItemService.deleteOrderItem(2);
 
-      // OrderItem n'a pas de champ available — la suppression est physique
       verify(orderItemRepository, never()).save(any());
-      verify(orderItemRepository).deleteById(2);
+      // ✅ deleteById n'est plus appelé non plus — orphanRemoval gère
+      verify(orderItemRepository, never()).deleteById(any());
     }
   }
 }

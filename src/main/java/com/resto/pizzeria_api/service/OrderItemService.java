@@ -1,10 +1,12 @@
 package com.resto.pizzeria_api.service;
 
 import com.resto.pizzeria_api.exception.ApiNotFoundException;
+import com.resto.pizzeria_api.model.Order;
 import com.resto.pizzeria_api.model.OrderItem;
 import com.resto.pizzeria_api.repository.OrderItemRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
@@ -59,12 +61,18 @@ public class OrderItemService {
      * @throws ApiNotFoundException Si l'article de commande n'existe pas
      *                              avant la suppression
      */
+    @Transactional
     public void deleteOrderItem(final Integer id) throws ApiNotFoundException {
-        if (!orderItemRepository.existsById(id)) {
-            throw new ApiNotFoundException(
-                    "Article de commande n'a pas été trouvé");
-        }
+      OrderItem item = orderItemRepository.findById(id)
+          .orElseThrow(() -> new ApiNotFoundException(
+              "Article de commande n'a pas été trouvé"));
+      // ✅ On retire l'item de la collection du parent
+      // orphanRemoval=true sur Order.items garantit la suppression en BDD
+      Order order = item.getOrder();
+      order.getItems().remove(item);
 
-        orderItemRepository.deleteById(id);
+      // ✅ La session reste ouverte (@Transactional) → suppression committée
+      // Pas besoin d'appeler deleteById — orphanRemoval s'en charge
+      //  orderItemRepository.deleteById(id);
     }
 }

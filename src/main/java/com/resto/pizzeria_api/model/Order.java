@@ -63,7 +63,7 @@ public class Order {
     /**
      * Articles de la commande.
      */
-    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     @JsonManagedReference
     // @NotEmpty(message = "La commande doit contenir au moins un article")
     @Valid

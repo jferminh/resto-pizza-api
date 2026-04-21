@@ -144,7 +144,7 @@ public class GlobalExceptionHandler {
                 "CODE_UNKNOWN",
                 new LinkedHashMap<>()
         );
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
     }
 
     private LinkedHashMap<String, String> buildConstraintViolationResponse(
