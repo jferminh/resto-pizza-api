@@ -1,0 +1,127 @@
+# ============================================================
+# docker-compose.yml — Orchestration locale resto-pizza
+# Services : db (MySQL) + api (Spring Boot) + web (Spring Boot)
+# ============================================================
+
+# Version du format Compose (3.8 = compatible Docker Desktop actuel)
+version: "3.8"
+
+services:
+
+  # ──────────────────────────────────────────
+  # SERVICE 1 : Base de données MySQL
+  # ──────────────────────────────────────────
+  db:
+    image: mysql:8.0
+    # Nom explicite du conteneur (pratique pour les logs)
+    container_name: resto-pizza-db
+    restart: unless-stopped
+
+    environment:
+      # Variables lues depuis le fichier .env
+      # Jamais de valeurs en dur ici → 12 facteurs : Config
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+
+    ports:
+      # host:conteneur — expose MySQL sur ta machine pour déboguer avec DBeaver
+      - "3307:3306"
+      # On utilise 3307 côté host pour éviter le conflit avec ton MySQL local
+
+    volumes:
+      # Persistance des données : même si le conteneur est supprimé,
+      # les données MySQL survivent dans ce volume Docker nommé
+      - mysql_data:/var/lib/mysql
+      # Script d'initialisation : exécuté au 1er démarrage uniquement
+      - ./infra/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+
+    networks:
+      - resto-network
+
+    # Health check : vérifie que MySQL est VRAIMENT prêt
+    # (le conteneur peut démarrer mais MySQL mettre 10-20s à être opérationnel)
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost",
+             "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ──────────────────────────────────────────
+  # SERVICE 2 : API Spring Boot
+  # ──────────────────────────────────────────
+  api:
+    # Construction depuis le Dockerfile local
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: resto-pizza-api
+    restart: unless-stopped
+
+    environment:
+      # Activer le profil prod → utilise application-prod.properties
+      # qui attend DB_URL, DB_USERNAME, DB_PASSWORD
+      SPRING_PROFILES_ACTIVE: prod
+      # Ces variables correspondent exactement à ${DB_URL} etc.
+      # dans ton application-prod.properties ✅
+      DB_URL: ${DB_URL}
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+
+    ports:
+      - "8080:8080"
+
+    networks:
+      - resto-network
+
+    # L'API ne démarre QUE quand MySQL est healthy
+    # Évite les erreurs "Connection refused" au boot
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # ──────────────────────────────────────────
+  # SERVICE 3 : Application Web Spring Boot
+  # ──────────────────────────────────────────
+  web:
+    build:
+      # Le Dockerfile du Web est dans son propre dossier
+      context: ../resto-pizza-web
+      dockerfile: Dockerfile
+    container_name: resto-pizza-web
+    restart: unless-stopped
+
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      # URL de l'API : "api" = nom du service ci-dessus
+      # ⚠️ JAMAIS localhost ici — les conteneurs communiquent par nom de service
+      API_URL: http://api:8080
+
+    ports:
+      - "8081:8081"
+
+    networks:
+      - resto-network
+
+    # Le Web ne démarre qu'après l'API
+    depends_on:
+      - api
+
+# ──────────────────────────────────────────
+# VOLUMES nommés
+# Persistent même après docker-compose down
+# docker-compose down -v pour tout supprimer y compris les données
+# ──────────────────────────────────────────
+volumes:
+  mysql_data:
+    driver: local
+
+# ──────────────────────────────────────────
+# RÉSEAU isolé
+# Les trois services se voient entre eux par leur nom
+# Rien d'autre n'a accès à ce réseau
+# ──────────────────────────────────────────
+networks:
+  resto-network:
+    driver: bridge
