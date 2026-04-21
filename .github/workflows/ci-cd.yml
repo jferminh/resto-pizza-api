@@ -50,7 +50,7 @@ jobs:
           restore-keys: ${{ runner.os }}-maven-
 
       # 4. Compiler + lancer les tests
-      - name: 🧪 Compiler et tester
+      - name: 🧪 Compiler + tester + JaCoCo
         run: mvn clean verify
 
       # 5. Publier le rapport de tests (même si les tests échouent)
@@ -71,7 +71,9 @@ jobs:
           mvn sonar:sonar \
             -Dsonar.projectKey=${{ secrets.SONAR_PROJECT_KEY }} \
             -Dsonar.organization=${{ secrets.SONAR_ORGANIZATION }} \
-            -Dsonar.host.url=https://sonarcloud.io
+            -Dsonar.host.url=https://sonarcloud.io \
+            -Dsonar.java.source=25 \
+            -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml
 
       # 7. Uploader le .jar produit comme artefact GitHub
       - name: 📦 Upload artefact JAR
