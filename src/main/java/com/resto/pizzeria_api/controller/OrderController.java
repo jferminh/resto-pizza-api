@@ -80,22 +80,7 @@ public class OrderController {
             @PathVariable final Integer id,
             @RequestBody final Order updatedOrder
     ) throws ApiNotFoundException {
-        final Order existing = orderService.getOrderById(id);
-
-        existing.setDailyId(updatedOrder.getDailyId());
-        existing.setStatus(updatedOrder.getStatus());
-        existing.setClient(updatedOrder.getClient());
-
-        existing.getItems().clear();
-
-        if (updatedOrder.getItems() != null) {
-            updatedOrder.getItems().forEach(item -> {
-                item.setOrder(existing);
-                existing.getItems().add(item);
-            });
-        }
-
-        return orderService.saveOrder(existing);
+      return orderService.updateOrder(id, updatedOrder);
     }
 
     /**
