@@ -15,6 +15,7 @@ on:
 env:
   JAVA_VERSION: '25'           # ← adapte si tu uses Java 17 ou 21
   DOCKER_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/resto-pizza-api
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
 
