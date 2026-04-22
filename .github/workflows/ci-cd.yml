@@ -25,13 +25,13 @@ jobs:
 
       # 1. Récupérer le code source
       - name: 📥 Checkout du code
-        uses: actions/checkout@v4        # ✅ v4
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       # 2. Installer Java
       - name: ☕ Installer Java ${{ env.JAVA_VERSION }}
-        uses: actions/setup-java@v4      # ✅ v4
+        uses: actions/setup-java@v4
         with:
           java-version: ${{ env.JAVA_VERSION }}
           distribution: 'temurin'
@@ -51,7 +51,7 @@ jobs:
       # 5. Générer le rapport Allure HTML (même si les tests échouent)
       - name: 📊 Générer le rapport Allure HTML
         if: always()
-        uses: simple-elf/allure-report-action@v2   # ✅ version épinglée
+        uses: simple-elf/allure-report-action@v1.13
         with:
           allure_results: target/allure-results
           allure_report: target/allure-report
@@ -60,7 +60,7 @@ jobs:
       # 6. Upload du rapport HTML comme artefact téléchargeable
       - name: 📤 Upload rapport Allure
         if: always()
-        uses: actions/upload-artifact@v4  # ✅ v4
+        uses: actions/upload-artifact@v4
         with:
           name: allure-report
           path: target/allure-report/
@@ -68,7 +68,7 @@ jobs:
 
       # 7. Publier le rapport sur GitHub Pages
       - name: 🌐 Déployer rapport sur GitHub Pages
-        if: always() && github.ref == 'refs/heads/main'  # ✅ logique corrigée
+        if: always() && github.ref == 'refs/heads/main'
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -89,7 +89,7 @@ jobs:
 
       # 9. Upload du JAR comme artefact réutilisable par le Job Docker
       - name: 📦 Upload artefact JAR
-        uses: actions/upload-artifact@v4  # ✅ v4
+        uses: actions/upload-artifact@v4
         with:
           name: resto-pizza-api-jar
           path: target/resto-pizza-api-*.jar
