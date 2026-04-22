@@ -141,6 +141,9 @@ jobs:
     needs: [ build-and-test, docker ]
     if: always()
 
+    env:
+      TEAMS_HOOK_URL: ${{ secrets.TEAMS_WEBHOOK }}
+
     steps:
 
       - name: 🎨 Préparer le statut du pipeline
@@ -168,11 +171,11 @@ jobs:
           fi
 
       - name: 📣 Notification Teams
-        if: secrets.TEAMS_WEBHOOK != ''
+        if: env.TEAMS_HOOK_URL != ''
         uses: jdcargile/ms-teams-notification@v1.4
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          ms-teams-webhook-uri: ${{ secrets.TEAMS_WEBHOOK }}
+          ms-teams-webhook-uri: ${{ env.TEAMS_HOOK_URL }}
           notification-summary: >-
             ${{ steps.status.outputs.emoji }} Pipeline ${{ steps.status.outputs.status }}
             — resto-pizza-api
