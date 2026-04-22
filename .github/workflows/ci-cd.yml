@@ -142,31 +142,42 @@ jobs:
     if: always()
 
     steps:
+
       - name: 🎨 Préparer le statut du pipeline
         id: status
         run: |
-          if [[ "${{ needs.build-and-test.result }}" == "success" && \
-                "${{ needs.docker.result }}" == "success" ]]; then
-            echo "color=3066993" >> $GITHUB_OUTPUT
-            echo "emoji=✅" >> $GITHUB_OUTPUT
-            echo "status=SUCCÈS" >> $GITHUB_OUTPUT
-          elif [[ "${{ needs.build-and-test.result }}" == "failure" || \
-                  "${{ needs.docker.result }}" == "failure" ]]; then
-            echo "color=15158332" >> $GITHUB_OUTPUT
-            echo "emoji=❌" >> $GITHUB_OUTPUT
-            echo "status=ÉCHEC" >> $GITHUB_OUTPUT
+          BUILD="${{ needs.build-and-test.result }}"
+          DOCKER="${{ needs.docker.result }}"
+
+          if [[ "$DOCKER" == "skipped" ]]; then
+            DOCKER="success"
+          fi
+
+          if [[ "$BUILD" == "success" && "$DOCKER" == "success" ]]; then
+            echo "color=3066993"  >> $GITHUB_OUTPUT   # vert
+            echo "emoji=✅"       >> $GITHUB_OUTPUT
+            echo "status=SUCCÈS"  >> $GITHUB_OUTPUT
+          elif [[ "$BUILD" == "failure" || "$DOCKER" == "failure" ]]; then
+            echo "color=15158332" >> $GITHUB_OUTPUT   # rouge
+            echo "emoji=❌"       >> $GITHUB_OUTPUT
+            echo "status=ÉCHEC"   >> $GITHUB_OUTPUT
           else
-            echo "color=16776960" >> $GITHUB_OUTPUT
-            echo "emoji=⚠️" >> $GITHUB_OUTPUT
-            echo "status=ANNULÉ" >> $GITHUB_OUTPUT
+            echo "color=16776960" >> $GITHUB_OUTPUT   # jaune
+            echo "emoji=⚠️"       >> $GITHUB_OUTPUT
+            echo "status=ANNULÉ"  >> $GITHUB_OUTPUT
           fi
 
       - name: 📣 Notification Teams
-        if: ${{ secrets.TEAMS_WEBHOOK != '' }}
+        if: secrets.TEAMS_WEBHOOK != ''
         uses: jdcargile/ms-teams-notification@v1.4
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           ms-teams-webhook-uri: ${{ secrets.TEAMS_WEBHOOK }}
-          notification-summary: "${{ steps.status.outputs.emoji }} Pipeline ${{ steps.status.outputs.status }} — resto-pizza-api"
+          notification-summary: >-
+            ${{ steps.status.outputs.emoji }} Pipeline ${{ steps.status.outputs.status }}
+            — resto-pizza-api
+            | Branche : ${{ github.ref_name }}
+            | Par : ${{ github.actor }}
+            | ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           notification-color: ${{ steps.status.outputs.color }}
           timezone: Europe/Paris
