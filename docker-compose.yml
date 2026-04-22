@@ -4,10 +4,9 @@
 # ============================================================
 
 # Version du format Compose (3.8 = compatible Docker Desktop actuel)
-version: "3.8"
+# version: "3.8"
 
 services:
-
   # ──────────────────────────────────────────
   # SERVICE 1 : Base de données MySQL
   # ──────────────────────────────────────────

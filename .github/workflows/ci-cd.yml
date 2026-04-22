@@ -20,7 +20,7 @@ env:
 jobs:
 
   # ═══════════════════════════════════════════════════════════════════════════
-  # JOB 1 — BUILD & TEST
+  # JOB 1 — BUILD, TEST, ALLURE, SONARCLOUD
   # Objectif : compiler, tester, analyser la qualité, produire le .jar
   # ═══════════════════════════════════════════════════════════════════════════
   build-and-test:
@@ -31,13 +31,13 @@ jobs:
 
       # 1. Récupérer le code source
       - name: 📥 Checkout du code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0   # requis par SonarCloud pour l'analyse git blame
 
       # 2. Installer Java
       - name: ☕ Installer Java ${{ env.JAVA_VERSION }}
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: ${{ env.JAVA_VERSION }}
           distribution: 'temurin'
@@ -51,17 +51,25 @@ jobs:
           restore-keys: ${{ runner.os }}-maven-
 
       # 4. Compiler + lancer les tests
-      - name: 🧪 Compiler + tester + JaCoCo
-        run: mvn clean verify
+      - name: 🧪 Compiler + Tester + Rapport Allure
+        run: mvn -B --no-transfer-progress clean verify
 
       # 5. Publier le rapport de tests (même si les tests échouent)
-      - name: 📊 Upload rapport Surefire
+      - name: 📤 Upload résultats Allure (données brutes)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
-          name: surefire-reports
-          path: target/surefire-reports/
-          retention-days: 7
+          name: allure-results
+          path: target/allure-results/
+          retention-days: 30
+
+      - name: 📤 Upload rapport Allure (HTML)
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: allure-report
+          path: target/site/allure-maven-plugin/
+          retention-days: 30
 
       # 6. Analyse SonarCloud
       - name: 🔍 Analyse SonarCloud
@@ -74,7 +82,6 @@ jobs:
             -Dsonar.organization=${{ secrets.SONAR_ORGANIZATION }} \
             -Dsonar.host.url=https://sonarcloud.io \
             -Dsonar.java.source=25 \
-#            -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml
 
       # 7. Uploader le .jar produit comme artefact GitHub
       - name: 📦 Upload artefact JAR
@@ -135,3 +142,62 @@ jobs:
           tags: |
             ${{ env.DOCKER_IMAGE }}:latest
             ${{ env.DOCKER_IMAGE }}:${{ github.sha }}
+
+  # ─────────────────────────────────────────────
+  # JOB 3 — Notification Teams
+  # (toujours exécuté, succès ou échec)
+  # ─────────────────────────────────────────────
+  notify:
+    name: 📣 Notification
+    runs-on: ubuntu-latest
+    needs: [ build-and-test, docker ]
+    if: always()   # s'exécute même si les jobs précédents échouent
+
+    steps:
+      - name: 🎨 Préparer le statut du pipeline
+        id: status
+        run: |
+          # Détermine le statut global des jobs précédents
+          if [[ "${{ needs.build-and-test.result }}" == "success" && \
+                "${{ needs.docker.result }}" == "success" ]]; then
+            echo "color=3066993" >> $GITHUB_OUTPUT   # vert Discord
+            echo "emoji=✅" >> $GITHUB_OUTPUT
+            echo "status=SUCCÈS" >> $GITHUB_OUTPUT
+          elif [[ "${{ needs.build-and-test.result }}" == "failure" || \
+                  "${{ needs.docker.result }}" == "failure" ]]; then
+            echo "color=15158332" >> $GITHUB_OUTPUT  # rouge Discord
+            echo "emoji=❌" >> $GITHUB_OUTPUT
+            echo "status=ÉCHEC" >> $GITHUB_OUTPUT
+          else
+            echo "color=16776960" >> $GITHUB_OUTPUT  # jaune Discord
+            echo "emoji=⚠️" >> $GITHUB_OUTPUT
+            echo "status=ANNULÉ" >> $GITHUB_OUTPUT
+          fi
+
+      # ── Option A : Discord ──────────────────
+#      - name: 📣 Notification Discord
+#        if: ${{ secrets.DISCORD_WEBHOOK != '' }}
+#        uses: sarisia/actions-status-discord@v1
+#        with:
+#          webhook: ${{ secrets.DISCORD_WEBHOOK }}
+#          status: ${{ needs.build-and-test.result }}
+#          title: "${{ steps.status.outputs.emoji }} Pipeline resto-pizza-api"
+#          description: |
+#            **Branche :** `${{ github.ref_name }}`
+#            **Commit :** `${{ github.sha }}`
+#            **Déclenché par :** ${{ github.actor }}
+#            **Build & Test :** ${{ needs.build-and-test.result }}
+#            **Docker Push :** ${{ needs.docker.result }}
+#          color: ${{ steps.status.outputs.color }}
+#          url: "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+      # ── Option B : Teams ────────────────────
+      - name: 📣 Notification Teams
+        if: ${{ secrets.TEAMS_WEBHOOK != '' }}
+        uses: jdcargile/ms-teams-notification@v1.4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          ms-teams-webhook-uri: ${{ secrets.TEAMS_WEBHOOK }}
+          notification-summary: "${{ steps.status.outputs.emoji }} Pipeline ${{ steps.status.outputs.status }} — resto-pizza-api"
+          notification-color: ${{ steps.status.outputs.color }}
+          timezone: Europe/Paris
