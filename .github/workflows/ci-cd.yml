@@ -54,24 +54,34 @@ jobs:
       - name: 🧪 Compiler + Tester + Rapport Allure
         run: mvn -B --no-transfer-progress clean verify
 
-      # 5. Publier le rapport de tests (même si les tests échouent)
-      - name: 📤 Upload résultats Allure (données brutes)
-        if: always()
-        uses: actions/upload-artifact@v5
+      # 5. Génération du rapport HTML via l'action officielle Allure
+      - name: 📊 Générer le rapport Allure HTML
+        if: always() # même si les tests échouent
+        uses: simple-elf/allure-report-action@master
         with:
-          name: allure-results
-          path: target/allure-results/
-          retention-days: 30
+          allure_results: target/allure-results
+          allure_report: target/allure-report
+          allure_history: allure-history
 
+      # 6.
       - name: 📤 Upload rapport Allure (HTML)
         if: always()
         uses: actions/upload-artifact@v5
         with:
           name: allure-report
-          path: target/site/allure-maven-plugin/
+          path: target/allure-report/
           retention-days: 30
 
-      # 6. Analyse SonarCloud
+      # 7 Publie le rapport sur GitHub Pages (accessible via URL publique)
+      - name: 🌐 Déployer rapport sur GitHub Pages
+        if: github.ref == 'refs/heads/main' && always()
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: target/allure-report
+
+      # 8. Analyse SonarCloud
       - name: 🔍 Analyse SonarCloud
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -83,7 +93,7 @@ jobs:
             -Dsonar.host.url=https://sonarcloud.io \
             -Dsonar.java.source=25 \
 
-      # 7. Uploader le .jar produit comme artefact GitHub
+      # 8. Uploader le .jar produit comme artefact GitHub
       - name: 📦 Upload artefact JAR
         uses: actions/upload-artifact@v4
         with:
