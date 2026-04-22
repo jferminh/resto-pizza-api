@@ -1,19 +1,14 @@
 # .github/workflows/ci-cd.yml
-# Pipeline CI/CD — API Spring Boot resto-pizza-api
-# Déclenché sur chaque push vers main et sur les Pull Requests
-
 name: CI/CD — resto-pizza-api
 
-# ─── Déclencheurs ────────────────────────────────────────────────────────────
 on:
   push:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
 
-# ─── Variables globales ──────────────────────────────────────────────────────
 env:
-  JAVA_VERSION: '25'           # ← adapte si tu uses Java 17 ou 21
+  JAVA_VERSION: '25'
   DOCKER_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/resto-pizza-api
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
@@ -21,7 +16,6 @@ jobs:
 
   # ═══════════════════════════════════════════════════════════════════════════
   # JOB 1 — BUILD, TEST, ALLURE, SONARCLOUD
-  # Objectif : compiler, tester, analyser la qualité, produire le .jar
   # ═══════════════════════════════════════════════════════════════════════════
   build-and-test:
     name: 🔨 Build & Test
@@ -31,18 +25,18 @@ jobs:
 
       # 1. Récupérer le code source
       - name: 📥 Checkout du code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4        # ✅ v4
         with:
-          fetch-depth: 0   # requis par SonarCloud pour l'analyse git blame
+          fetch-depth: 0
 
       # 2. Installer Java
       - name: ☕ Installer Java ${{ env.JAVA_VERSION }}
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v4      # ✅ v4
         with:
           java-version: ${{ env.JAVA_VERSION }}
           distribution: 'temurin'
 
-      # 3. Cache Maven (accélère les builds suivants)
+      # 3. Cache Maven
       - name: 📦 Cache Maven
         uses: actions/cache@v4
         with:
@@ -50,31 +44,31 @@ jobs:
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: ${{ runner.os }}-maven-
 
-      # 4. Compiler + lancer les tests
-      - name: 🧪 Compiler + Tester + Rapport Allure
+      # 4. Compiler + tester → génère target/allure-results/ automatiquement
+      - name: 🧪 Build & Tests
         run: mvn -B --no-transfer-progress clean verify
 
-      # 5. Génération du rapport HTML via l'action officielle Allure
+      # 5. Générer le rapport Allure HTML (même si les tests échouent)
       - name: 📊 Générer le rapport Allure HTML
-        if: always() # même si les tests échouent
-        uses: simple-elf/allure-report-action@master
+        if: always()
+        uses: simple-elf/allure-report-action@v2   # ✅ version épinglée
         with:
           allure_results: target/allure-results
           allure_report: target/allure-report
           allure_history: allure-history
 
-      # 6.
-      - name: 📤 Upload rapport Allure (HTML)
+      # 6. Upload du rapport HTML comme artefact téléchargeable
+      - name: 📤 Upload rapport Allure
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v4  # ✅ v4
         with:
           name: allure-report
           path: target/allure-report/
           retention-days: 30
 
-      # 7 Publie le rapport sur GitHub Pages (accessible via URL publique)
+      # 7. Publier le rapport sur GitHub Pages
       - name: 🌐 Déployer rapport sur GitHub Pages
-        if: github.ref == 'refs/heads/main' && always()
+        if: always() && github.ref == 'refs/heads/main'  # ✅ logique corrigée
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -87,15 +81,15 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: |
-          mvn sonar:sonar \
+          mvn -B --no-transfer-progress sonar:sonar \
             -Dsonar.projectKey=${{ secrets.SONAR_PROJECT_KEY }} \
             -Dsonar.organization=${{ secrets.SONAR_ORGANIZATION }} \
             -Dsonar.host.url=https://sonarcloud.io \
-            -Dsonar.java.source=25 \
+            -Dsonar.java.source=25
 
-      # 8. Uploader le .jar produit comme artefact GitHub
+      # 9. Upload du JAR comme artefact réutilisable par le Job Docker
       - name: 📦 Upload artefact JAR
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v4  # ✅ v4
         with:
           name: resto-pizza-api-jar
           path: target/resto-pizza-api-*.jar
@@ -103,13 +97,11 @@ jobs:
 
   # ═══════════════════════════════════════════════════════════════════════════
   # JOB 2 — DOCKER BUILD & PUSH
-  # Objectif : construire l'image Docker et la pousser sur Docker Hub
-  # Ne tourne QUE sur push vers main (pas sur les PR)
   # ═══════════════════════════════════════════════════════════════════════════
   docker:
     name: 🐳 Docker Build & Push
     runs-on: ubuntu-latest
-    needs: build-and-test      # ← attend que le Job 1 soit vert
+    needs: build-and-test
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
 
     steps:
@@ -117,33 +109,20 @@ jobs:
       - name: 📥 Checkout du code
         uses: actions/checkout@v4
 
-      - name: ☕ Installer Java ${{ env.JAVA_VERSION }}
-        uses: actions/setup-java@v4
+      # ✅ Réutilise le JAR produit en Job 1 — pas de rebuild
+      - name: 📥 Télécharger le JAR depuis Job 1
+        uses: actions/download-artifact@v4
         with:
-          java-version: ${{ env.JAVA_VERSION }}
-          distribution: 'temurin'
+          name: resto-pizza-api-jar
+          path: target/
 
-      - name: 📦 Cache Maven
-        uses: actions/cache@v4
-        with:
-          path: ~/.m2/repository
-          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
-          restore-keys: ${{ runner.os }}-maven-
-
-      # Reconstruire le .jar pour le Docker build
-      - name: 🔨 Build du JAR (sans tests — déjà validés)
-        run: mvn clean package -DskipTests
-
-      # Se connecter à Docker Hub avec les secrets
       - name: 🔐 Login Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # Construire et pousser l'image avec 2 tags :
-      # - latest : toujours la dernière version de main
-      # - sha-xxxxx : tag immuable lié au commit exact (traçabilité)
+      # Tags : latest (toujours à jour) + sha (traçabilité immuable)
       - name: 🐳 Build & Push image Docker
         uses: docker/build-push-action@v5
         with:
@@ -153,55 +132,35 @@ jobs:
             ${{ env.DOCKER_IMAGE }}:latest
             ${{ env.DOCKER_IMAGE }}:${{ github.sha }}
 
-  # ─────────────────────────────────────────────
-  # JOB 3 — Notification Teams
-  # (toujours exécuté, succès ou échec)
-  # ─────────────────────────────────────────────
+  # ═══════════════════════════════════════════════════════════════════════════
+  # JOB 3 — NOTIFICATION TEAMS
+  # ═══════════════════════════════════════════════════════════════════════════
   notify:
     name: 📣 Notification
     runs-on: ubuntu-latest
     needs: [ build-and-test, docker ]
-    if: always()   # s'exécute même si les jobs précédents échouent
+    if: always()
 
     steps:
       - name: 🎨 Préparer le statut du pipeline
         id: status
         run: |
-          # Détermine le statut global des jobs précédents
           if [[ "${{ needs.build-and-test.result }}" == "success" && \
                 "${{ needs.docker.result }}" == "success" ]]; then
-            echo "color=3066993" >> $GITHUB_OUTPUT   # vert Discord
+            echo "color=3066993" >> $GITHUB_OUTPUT
             echo "emoji=✅" >> $GITHUB_OUTPUT
             echo "status=SUCCÈS" >> $GITHUB_OUTPUT
           elif [[ "${{ needs.build-and-test.result }}" == "failure" || \
                   "${{ needs.docker.result }}" == "failure" ]]; then
-            echo "color=15158332" >> $GITHUB_OUTPUT  # rouge Discord
+            echo "color=15158332" >> $GITHUB_OUTPUT
             echo "emoji=❌" >> $GITHUB_OUTPUT
             echo "status=ÉCHEC" >> $GITHUB_OUTPUT
           else
-            echo "color=16776960" >> $GITHUB_OUTPUT  # jaune Discord
+            echo "color=16776960" >> $GITHUB_OUTPUT
             echo "emoji=⚠️" >> $GITHUB_OUTPUT
             echo "status=ANNULÉ" >> $GITHUB_OUTPUT
           fi
 
-      # ── Option A : Discord ──────────────────
-#      - name: 📣 Notification Discord
-#        if: ${{ secrets.DISCORD_WEBHOOK != '' }}
-#        uses: sarisia/actions-status-discord@v1
-#        with:
-#          webhook: ${{ secrets.DISCORD_WEBHOOK }}
-#          status: ${{ needs.build-and-test.result }}
-#          title: "${{ steps.status.outputs.emoji }} Pipeline resto-pizza-api"
-#          description: |
-#            **Branche :** `${{ github.ref_name }}`
-#            **Commit :** `${{ github.sha }}`
-#            **Déclenché par :** ${{ github.actor }}
-#            **Build & Test :** ${{ needs.build-and-test.result }}
-#            **Docker Push :** ${{ needs.docker.result }}
-#          color: ${{ steps.status.outputs.color }}
-#          url: "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-
-      # ── Option B : Teams ────────────────────
       - name: 📣 Notification Teams
         if: ${{ secrets.TEAMS_WEBHOOK != '' }}
         uses: jdcargile/ms-teams-notification@v1.4
