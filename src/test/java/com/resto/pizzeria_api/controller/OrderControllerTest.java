@@ -8,9 +8,10 @@ import com.resto.pizzeria_api.repository.ClientRepository;
 import com.resto.pizzeria_api.repository.DishRepository;
 import com.resto.pizzeria_api.repository.OrderItemRepository;
 import com.resto.pizzeria_api.repository.OrderRepository;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
+import io.qameta.allure.*;
+import io.qameta.allure.junit5.AllureJunit5;
+import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureRestTestClient;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -32,6 +33,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 @AutoConfigureMockMvc
 @AutoConfigureRestTestClient
 @ActiveProfiles("test")
+@ExtendWith(AllureJunit5.class)
+
+@Epic("Gestion des commandes")
+@Feature("API REST — Orders")
+@Owner("resto-pizza-api")
+
 @DisplayName("OrderController — tests d'intégration")
 class OrderControllerTest {
 
@@ -45,15 +52,17 @@ class OrderControllerTest {
   private Dish savedDish;
   private Client savedClient;
 
+  // -------------------------------------------------------------------------
+  // Setup
+  // -------------------------------------------------------------------------
+
   @BeforeEach
   void setUp() {
-    // Ordre de suppression respectant les FK
     orderItemRepository.deleteAll();
     orderRepository.deleteAll();
     dishRepository.deleteAll();
     clientRepository.deleteAll();
 
-    // Fixtures partagées
     savedDish = new Dish();
     savedDish.setName("Margherita");
     savedDish.setPrice(new BigDecimal("9.90"));
@@ -70,35 +79,29 @@ class OrderControllerTest {
   }
 
   // -------------------------------------------------------------------------
-  // Helpers
+  // Fixtures
   // -------------------------------------------------------------------------
 
-  private RestTestClientResponse exchange(RestTestClient.RequestHeadersSpec<?> spec) {
-    return RestTestClientResponse.from(spec.exchange());
-  }
-
-  /** Construit un body JSON de commande minimal avec un item */
   private String orderBodyWithItem(Integer clientId, Integer dishId, int quantity) {
     return """
-        {
-          "dailyId": 1,
-          "client": { "id": %d },
-          "items": [
-            { "dish": { "id": %d }, "quantity": %d }
-          ]
-        }
-        """.formatted(clientId, dishId, quantity);
+            {
+              "dailyId": 1,
+              "client": { "id": %d },
+              "items": [
+                { "dish": { "id": %d }, "quantity": %d }
+              ]
+            }
+            """.formatted(clientId, dishId, quantity);
   }
 
-  /** Construit un body JSON de commande sans item */
   private String orderBodyWithoutItem(Integer clientId) {
     return """
-        {
-          "dailyId": 1,
-          "client": { "id": %d },
-          "items": []
-        }
-        """.formatted(clientId);
+            {
+              "dailyId": 1,
+              "client": { "id": %d },
+              "items": []
+            }
+            """.formatted(clientId);
   }
 
   /** Persiste une commande complète en base via repository */
@@ -117,194 +120,308 @@ class OrderControllerTest {
     return orderRepository.save(order);
   }
 
+  private RestTestClientResponse exchange(RestTestClient.RequestHeadersSpec<?> spec) {
+    return RestTestClientResponse.from(spec.exchange());
+  }
+
   // =========================================================================
   // GET /api/orders
   // =========================================================================
 
-  @Test
-  @DisplayName("GET /api/orders — 200 tableau vide")
-  void getAllOrders_shouldReturn200WithEmptyArray() {
-    assertThat(exchange(restTestClient.get().uri("/api/orders")))
-        .hasStatusOk()
-        .bodyJson()
-        .isEqualTo("[]");
-  }
+  @Nested
+  @DisplayName("GET /api/orders")
+  class GetAllOrders {
 
-  @Test
-  @DisplayName("GET /api/orders — 200 avec commandes en base")
-  void getAllOrders_shouldReturn200WithOrders() {
-    persistOrder();
+    @Test
+    @Story("Lister les commandes")
+    @Severity(SeverityLevel.NORMAL)
+    @Description("Vérifie que GET /api/orders retourne 200 avec [] quand la table H2 est vide")
+    @DisplayName("200 — tableau vide")
+    void shouldReturn200WithEmptyArray() {
+      Allure.step("HTTP GET /api/orders (table vide)");
+      var response = exchange(restTestClient.get().uri("/api/orders"));
 
-    assertThat(exchange(restTestClient.get().uri("/api/orders")))
-        .hasStatusOk()
-        .bodyJson()
-        .extractingPath("$[0].dailyId").isEqualTo(1);
+      Allure.step("Assert : status=200, body=[]");
+      assertThat(response)
+          .hasStatusOk()
+          .bodyJson()
+          .isEqualTo("[]");
+    }
+
+    @Test
+    @Story("Lister les commandes")
+    @Severity(SeverityLevel.CRITICAL)
+    @Description("Vérifie que GET /api/orders retourne 200 avec les commandes persistées en H2")
+    @DisplayName("200 — liste de commandes")
+    void shouldReturn200WithOrders() {
+      persistOrder();
+
+      Allure.step("HTTP GET /api/orders");
+      var response = exchange(restTestClient.get().uri("/api/orders"));
+
+      Allure.step("Assert : status=200, [0].dailyId=1");
+      assertThat(response)
+          .hasStatusOk()
+          .bodyJson()
+          .extractingPath("$[0].dailyId").isEqualTo(1);
+    }
   }
 
   // =========================================================================
   // GET /api/orders/{id}
   // =========================================================================
 
-  @Test
-  @DisplayName("GET /api/orders/{id} — 200 commande trouvée")
-  void getOrderById_shouldReturn200WhenExists() {
-    Order saved = persistOrder();
+  @Nested
+  @DisplayName("GET /api/orders/{id}")
+  class GetOrderById {
 
-    assertThat(exchange(restTestClient.get().uri("/api/orders/{id}", saved.getId())))
-        .hasStatusOk()
-        .bodyJson()
-        .extractingPath("$.dailyId").isEqualTo(1);
-  }
+    @Test
+    @Story("Récupérer une commande par ID")
+    @Severity(SeverityLevel.CRITICAL)
+    @Description("Vérifie que GET /api/orders/{id} retourne 200 + la commande H2 correspondante")
+    @DisplayName("200 — commande trouvée")
+    void shouldReturn200WhenExists() {
+      Order saved = persistOrder();
 
-  @Test
-  @DisplayName("GET /api/orders/{id} — 404 commande inexistante")
-  void getOrderById_shouldReturn404WhenNotFound() {
-    assertThat(exchange(restTestClient.get().uri("/api/orders/{id}", 9999)))
-        .hasStatus(HttpStatus.NOT_FOUND)
-        .bodyJson()
-        .extractingPath("$.codeExtended").isEqualTo("CODE_NOT_FOUND");
+      Allure.step("HTTP GET /api/orders/" + saved.getId());
+      var response = exchange(restTestClient.get().uri("/api/orders/{id}", saved.getId()));
+
+      Allure.step("Assert : status=200, dailyId=1, items non vide");
+      assertThat(response)
+          .hasStatusOk()
+          .bodyJson()
+          .extractingPath("$.dailyId").isEqualTo(1);
+
+      assertThat(exchange(restTestClient.get().uri("/api/orders/{id}", saved.getId())))
+          .bodyJson()
+          .extractingPath("$.items[0].quantity").isEqualTo(2);
+    }
+
+    @Test
+    @Story("Récupérer une commande par ID")
+    @Severity(SeverityLevel.NORMAL)
+    @Description("Vérifie que GET /api/orders/{id} retourne 404 + CODE_NOT_FOUND pour un ID inexistant")
+    @DisplayName("404 — commande inexistante")
+    void shouldReturn404WhenNotFound() {
+      Allure.step("HTTP GET /api/orders/9999 (ID absent de H2)");
+      var response = exchange(restTestClient.get().uri("/api/orders/{id}", 9999));
+
+      Allure.step("Assert : status=404, codeExtended=CODE_NOT_FOUND");
+      assertThat(response)
+          .hasStatus(HttpStatus.NOT_FOUND)
+          .bodyJson()
+          .extractingPath("$.codeExtended").isEqualTo("CODE_NOT_FOUND");
+    }
   }
 
   // =========================================================================
   // POST /api/orders
   // =========================================================================
 
-  @Test
-  @DisplayName("POST /api/orders — 201 commande créée avec item")
-  void createOrder_shouldReturn201WithItem() {
-    var response = RestTestClientResponse.from(
-        restTestClient.post()
-            .uri("/api/orders")
-            .contentType(MediaType.APPLICATION_JSON)
-            .body(orderBodyWithItem(savedClient.getId(), savedDish.getId(), 2))
-            .exchange());
+  @Nested
+  @DisplayName("POST /api/orders")
+  class CreateOrder {
 
-    assertThat(response)
-        .hasStatus(HttpStatus.CREATED)
-        .bodyJson()
-        .hasPath("$.id");
+    @Test
+    @Story("Créer une commande")
+    @Severity(SeverityLevel.BLOCKER)
+    @Description("Vérifie que POST /api/orders retourne 201 + l'ID généré + l'item persisté avec la bonne quantité")
+    @DisplayName("201 — commande créée avec item")
+    void shouldReturn201WithItem() {
+      Allure.step("HTTP POST /api/orders — payload {dailyId:1, client, items:[{dish, quantity:2}]}");
+      var response = RestTestClientResponse.from(
+          restTestClient.post()
+              .uri("/api/orders")
+              .contentType(MediaType.APPLICATION_JSON)
+              .body(orderBodyWithItem(savedClient.getId(), savedDish.getId(), 2))
+              .exchange()
+      );
 
-    assertThat(RestTestClientResponse.from(
-        restTestClient.post()
-            .uri("/api/orders")
-            .contentType(MediaType.APPLICATION_JSON)
-            .body(orderBodyWithItem(savedClient.getId(), savedDish.getId(), 3))
-            .exchange()))
-        .bodyJson()
-        .extractingPath("$.items[0].quantity").isEqualTo(3);
-  }
+      Allure.step("Assert : status=201, $.id présent, items[0].quantity=2");
+      assertThat(response)
+          .hasStatus(HttpStatus.CREATED)
+          .bodyJson()
+          .hasPath("$.id");
 
-  @Test
-  @DisplayName("POST /api/orders — creationDate auto-assignée")
-  void createOrder_shouldAutoAssignCreationDate() {
-    var response = RestTestClientResponse.from(
-        restTestClient.post()
-            .uri("/api/orders")
-            .contentType(MediaType.APPLICATION_JSON)
-            .body(orderBodyWithItem(savedClient.getId(), savedDish.getId(), 1))
-            .exchange());
+      assertThat(response)
+          .bodyJson()
+          .extractingPath("$.items[0].quantity").isEqualTo(2);
+    }
 
-    assertThat(response)
-        .hasStatus(HttpStatus.CREATED)
-        .bodyJson()
-        .hasPath("$.creationDate");
-  }
+    @Test
+    @Story("Créer une commande")
+    @Severity(SeverityLevel.NORMAL)
+    @Description("Vérifie que le contrôleur auto-assigne creationDate lors du POST /api/orders")
+    @DisplayName("201 — creationDate auto-assignée")
+    void shouldAutoAssignCreationDate() {
+      Allure.step("HTTP POST /api/orders — payload minimal avec item");
+      var response = RestTestClientResponse.from(
+          restTestClient.post()
+              .uri("/api/orders")
+              .contentType(MediaType.APPLICATION_JSON)
+              .body(orderBodyWithItem(savedClient.getId(), savedDish.getId(), 1))
+              .exchange()
+      );
 
-  @Test
-  @DisplayName("POST /api/orders — 201 commande sans item")
-  void createOrder_shouldReturn201WithoutItems() {
-    var response = RestTestClientResponse.from(
-        restTestClient.post()
-            .uri("/api/orders")
-            .contentType(MediaType.APPLICATION_JSON)
-            .body(orderBodyWithoutItem(savedClient.getId()))
-            .exchange());
+      Allure.step("Assert : status=201, $.creationDate présent");
+      assertThat(response)
+          .hasStatus(HttpStatus.CREATED)
+          .bodyJson()
+          .hasPath("$.creationDate");
+    }
 
-    assertThat(response)
-        .hasStatus(HttpStatus.CREATED)
-        .bodyJson()
-        .extractingPath("$.items").isEqualTo(List.of());
+    @Test
+    @Story("Créer une commande")
+    @Severity(SeverityLevel.NORMAL)
+    @Description("Vérifie que POST /api/orders accepte une commande sans item et retourne 201 avec items=[]")
+    @DisplayName("201 — commande sans item")
+    void shouldReturn201WithoutItems() {
+      Allure.step("HTTP POST /api/orders — payload {dailyId:1, client, items:[]}");
+      var response = RestTestClientResponse.from(
+          restTestClient.post()
+              .uri("/api/orders")
+              .contentType(MediaType.APPLICATION_JSON)
+              .body(orderBodyWithoutItem(savedClient.getId()))
+              .exchange()
+      );
+
+      Allure.step("Assert : status=201, $.items=[]");
+      assertThat(response)
+          .hasStatus(HttpStatus.CREATED)
+          .bodyJson()
+          .extractingPath("$.items").isEqualTo(List.of());
+    }
   }
 
   // =========================================================================
   // PUT /api/orders/{id}
   // =========================================================================
 
-  @Test
-  @DisplayName("PUT /api/orders/{id} — 200 commande mise à jour")
-  void updateOrder_shouldReturn200WhenUpdated() {
-    Order saved = persistOrder();
+  @Nested
+  @DisplayName("PUT /api/orders/{id}")
+  class UpdateOrder {
 
-    String updatedBody = """
-        {
-          "dailyId": 99,
-          "client": { "id": %d },
-          "items": [
-            { "dish": { "id": %d }, "quantity": 5 }
-          ]
-        }
-        """.formatted(savedClient.getId(), savedDish.getId());
+    @Test
+    @Story("Modifier une commande")
+    @Severity(SeverityLevel.CRITICAL)
+    @Description("Vérifie que PUT /api/orders/{id} met à jour dailyId et les items en H2 et retourne 200")
+    @DisplayName("200 — commande mise à jour")
+    void shouldReturn200WhenUpdated() {
+      Order saved = persistOrder();
 
-    var response = RestTestClientResponse.from(
-        restTestClient.put()
-            .uri("/api/orders/{id}", saved.getId())
-            .contentType(MediaType.APPLICATION_JSON)
-            .body(updatedBody)
-            .exchange());
+      String updatedBody = """
+                {
+                  "dailyId": 99,
+                  "client": { "id": %d },
+                  "items": [
+                    { "dish": { "id": %d }, "quantity": 5 }
+                  ]
+                }
+                """.formatted(savedClient.getId(), savedDish.getId());
 
-    assertThat(response)
-        .hasStatusOk()
-        .bodyJson()
-        .extractingPath("$.dailyId").isEqualTo(99);
+      Allure.step("HTTP PUT /api/orders/" + saved.getId() + " — payload {dailyId:99, quantity:5}");
+      var response = RestTestClientResponse.from(
+          restTestClient.put()
+              .uri("/api/orders/{id}", saved.getId())
+              .contentType(MediaType.APPLICATION_JSON)
+              .body(updatedBody)
+              .exchange()
+      );
 
-    assertThat(RestTestClientResponse.from(
-        restTestClient.put()
-            .uri("/api/orders/{id}", saved.getId())
-            .contentType(MediaType.APPLICATION_JSON)
-            .body(updatedBody)
-            .exchange()))
-        .bodyJson()
-        .extractingPath("$.items[0].quantity").isEqualTo(5);
-  }
+      Allure.step("Assert : status=200, dailyId=99, items[0].quantity=5");
+      assertThat(response)
+          .hasStatusOk()
+          .bodyJson()
+          .extractingPath("$.dailyId").isEqualTo(99);
 
-  @Test
-  @DisplayName("PUT /api/orders/{id} — 404 commande inexistante")
-  void updateOrder_shouldReturn404WhenNotFound() {
-    var response = RestTestClientResponse.from(
-        restTestClient.put()
-            .uri("/api/orders/{id}", 9999)
-            .contentType(MediaType.APPLICATION_JSON)
-            .body(orderBodyWithItem(savedClient.getId(), savedDish.getId(), 1))
-            .exchange());
+      assertThat(response)
+          .bodyJson()
+          .extractingPath("$.items[0].quantity").isEqualTo(5);
+    }
 
-    assertThat(response)
-        .hasStatus(HttpStatus.NOT_FOUND)
-        .bodyJson()
-        .extractingPath("$.codeExtended").isEqualTo("CODE_NOT_FOUND");
+    @Test
+    @Story("Modifier une commande")
+    @Severity(SeverityLevel.NORMAL)
+    @Description("Vérifie que PUT /api/orders/{id} retourne 404 + CODE_NOT_FOUND pour un ID inexistant")
+    @DisplayName("404 — commande inexistante")
+    void shouldReturn404WhenNotFound() {
+      Allure.step("HTTP PUT /api/orders/9999 (ID absent de H2)");
+      var response = RestTestClientResponse.from(
+          restTestClient.put()
+              .uri("/api/orders/{id}", 9999)
+              .contentType(MediaType.APPLICATION_JSON)
+              .body(orderBodyWithItem(savedClient.getId(), savedDish.getId(), 1))
+              .exchange()
+      );
+
+      Allure.step("Assert : status=404, codeExtended=CODE_NOT_FOUND");
+      assertThat(response)
+          .hasStatus(HttpStatus.NOT_FOUND)
+          .bodyJson()
+          .extractingPath("$.codeExtended").isEqualTo("CODE_NOT_FOUND");
+    }
   }
 
   // =========================================================================
   // DELETE /api/orders/{id}
   // =========================================================================
 
-  @Test
-  @DisplayName("DELETE /api/orders/{id} — 204 commande supprimée")
-  void deleteOrder_shouldReturn204WhenDeleted() {
-    Order saved = persistOrder();
+  @Nested
+  @DisplayName("DELETE /api/orders/{id}")
+  class DeleteOrder {
 
-    assertThat(exchange(restTestClient.delete().uri("/api/orders/{id}", saved.getId())))
-        .hasStatus(HttpStatus.NO_CONTENT);
+    @Test
+    @Story("Supprimer une commande (hard delete)")
+    @Severity(SeverityLevel.BLOCKER)
+    @Description("Vérifie que DELETE /api/orders/{id} retourne 204 et supprime définitivement la commande en H2")
+    @DisplayName("204 — hard delete effectué")
+    void shouldReturn204WhenDeleted() {
+      Order saved = persistOrder();
 
-    // Vérifie que la commande n'est plus en base
-    assertThat(orderRepository.findById(saved.getId())).isEmpty();
-  }
+      Allure.step("HTTP DELETE /api/orders/" + saved.getId());
+      var response = exchange(restTestClient.delete().uri("/api/orders/{id}", saved.getId()));
 
-  @Test
-  @DisplayName("DELETE /api/orders/{id} — 404 commande inexistante")
-  void deleteOrder_shouldReturn404WhenNotFound() {
-    assertThat(exchange(restTestClient.delete().uri("/api/orders/{id}", 9999)))
-        .hasStatus(HttpStatus.NOT_FOUND)
-        .bodyJson()
-        .extractingPath("$.codeExtended").isEqualTo("CODE_NOT_FOUND");
+      Allure.step("Assert : status=204, commande absente en H2 (hard delete)");
+      assertThat(response).hasStatus(HttpStatus.NO_CONTENT);
+
+      assertThat(orderRepository.findById(saved.getId())).isEmpty();
+    }
+
+    @Test
+    @Story("Supprimer une commande (hard delete)")
+    @Severity(SeverityLevel.NORMAL)
+    @Description("Vérifie que DELETE /api/orders/{id} retourne 404 + CODE_NOT_FOUND pour un ID inexistant")
+    @DisplayName("404 — commande inexistante")
+    void shouldReturn404WhenNotFound() {
+      Allure.step("HTTP DELETE /api/orders/9999 (ID absent de H2)");
+      var response = exchange(restTestClient.delete().uri("/api/orders/{id}", 9999));
+
+      Allure.step("Assert : status=404, codeExtended=CODE_NOT_FOUND");
+      assertThat(response)
+          .hasStatus(HttpStatus.NOT_FOUND)
+          .bodyJson()
+          .extractingPath("$.codeExtended").isEqualTo("CODE_NOT_FOUND");
+    }
+
+    @Test
+    @Story("Supprimer une commande (hard delete)")
+    @Severity(SeverityLevel.CRITICAL)
+    @Description("Après DELETE, la commande ne doit plus apparaître dans GET /api/orders")
+    @DisplayName("Commande hard-deletée disparaît du GET /api/orders")
+    void shouldMakeOrderInvisibleInGetAll() {
+      Order saved = persistOrder();
+
+      Allure.step("HTTP DELETE /api/orders/" + saved.getId());
+      exchange(restTestClient.delete().uri("/api/orders/{id}", saved.getId()));
+
+      Allure.step("HTTP GET /api/orders — la commande doit être absente");
+      var response = exchange(restTestClient.get().uri("/api/orders"));
+
+      Allure.step("Assert : status=200, body=[]");
+      assertThat(response)
+          .hasStatusOk()
+          .bodyJson()
+          .isEqualTo("[]");
+    }
   }
 }
