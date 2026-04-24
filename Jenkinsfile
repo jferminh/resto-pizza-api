@@ -68,6 +68,9 @@ pipeline {
             when {
                 expression { env.GIT_BRANCH == 'origin/main' }
             }
+            options {
+                timeout(time: 10, unit: 'MINUTES')
+            }
             steps {
                 withCredentials([usernamePassword(
                     credentialsId: DOCKER_CREDENTIALS,
