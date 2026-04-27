@@ -6,7 +6,7 @@ pipeline {
     }
 
     environment {
-        DOCKER_IMAGE       = "jferminh/resto-pizza-api"
+        DOCKER_IMAGE       = 'julitox/resto-pizza-api'
         DOCKER_CREDENTIALS = 'dockerhub-credentials'
         SONAR_TOKEN        = credentials('sonar-token')
         SONAR_PROJECT_KEY  = 'jferminh_resto-pizza-api'
