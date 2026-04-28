@@ -1,0 +1,81 @@
+# ============================================================
+# docker-compose.prod.yml — Validation finale CI/CD
+# Utilise les images produites par les pipelines CI/CD
+# (GitHub Actions → API, Jenkins → Web)
+# NE contient AUCUN secret en clair — tout via .env
+# ============================================================
+
+services:
+
+  # ─────────────────────────────────────────────────────────
+  # SERVICE 1 : Base de données MySQL
+  # Identique à docker-compose.yml — backing service
+  # ─────────────────────────────────────────────────────────
+  db:
+    image: mysql:8.0
+    container_name: resto-pizza-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data_prod:/var/lib/mysql
+      - ./infra/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - resto-network
+
+  # ─────────────────────────────────────────────────────────
+  # SERVICE 2 : API Spring Boot
+  # Image produite par GitHub Actions et poussée sur Docker Hub
+  # Pas de build: → on pull directement depuis Docker Hub
+  # ─────────────────────────────────────────────────────────
+  api:
+    image: julitox/resto-pizza-api:latest   # ← image du pipeline GitHub Actions
+    container_name: resto-pizza-api
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      DB_URL:      ${DB_URL}
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - resto-network
+
+  # ─────────────────────────────────────────────────────────
+  # SERVICE 3 : Application Web Spring Boot
+  # Image produite par Jenkins et poussée sur Docker Hub
+  # ─────────────────────────────────────────────────────────
+  web:
+    image: julitox/resto-pizza-web:latest   # ← image du pipeline Jenkins
+    container_name: resto-pizza-web
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      API_URL: http://api:8080   # nom du service docker-compose, JAMAIS localhost
+    ports:
+      - "8081:8081"
+    depends_on:
+      - api
+    networks:
+      - resto-network
+
+volumes:
+  mysql_data_prod:
+    driver: local
+
+networks:
+  resto-network:
+    driver: bridge
